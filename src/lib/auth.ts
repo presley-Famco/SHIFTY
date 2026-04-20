@@ -11,6 +11,44 @@ function authSecretBytes(): Uint8Array {
 const COOKIE_NAME = 'driver_session';
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
+function getCookieFromHeader(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    let val = part.slice(idx + 1).trim();
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(val);
+    } catch {
+      return val;
+    }
+  }
+  return null;
+}
+
+async function userFromSessionToken(token: string): Promise<User | null> {
+  try {
+    const { payload } = await jwtVerify(token, authSecretBytes());
+    const userId = payload.sub;
+    if (typeof userId !== 'string') return null;
+    const user = await findUserById(userId);
+    if (!user) return null;
+    if (user.role === 'driver' && user.driver_status !== 'active_compliant') return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+/** Use in Route Handlers when `cookies()` from next/headers does not see the session cookie. */
+export async function getCurrentUserFromRequest(req: Request): Promise<User | null> {
+  const token = getCookieFromHeader(req.headers.get('cookie'), COOKIE_NAME);
+  if (!token) return null;
+  return userFromSessionToken(token);
+}
+
 export async function createSession(userId: string): Promise<void> {
   const token = await new SignJWT({ sub: userId })
     .setProtectedHeader({ alg: 'HS256' })
@@ -34,15 +72,5 @@ export async function destroySession(): Promise<void> {
 export async function getCurrentUser(): Promise<User | null> {
   const token = cookies().get(COOKIE_NAME)?.value;
   if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, authSecretBytes());
-    const userId = payload.sub;
-    if (typeof userId !== 'string') return null;
-    const user = await findUserById(userId);
-    if (!user) return null;
-    if (user.role === 'driver' && user.driver_status !== 'active_compliant') return null;
-    return user;
-  } catch {
-    return null;
-  }
+  return userFromSessionToken(token);
 }

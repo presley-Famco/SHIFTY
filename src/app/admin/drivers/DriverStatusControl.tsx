@@ -42,9 +42,15 @@ export default function DriverStatusControl({ userId, currentStatus }: Props) {
               credentials: 'include',
               body: JSON.stringify({ userId, status: next }),
             });
-            const data = (await res.json()) as { ok?: boolean; error?: string };
-            if (!res.ok || data.error) {
-              setError(data.error || 'Could not update driver.');
+            let message = '';
+            try {
+              const data = (await res.json()) as { ok?: boolean; error?: string };
+              message = data.error || '';
+            } catch {
+              message = res.statusText || `HTTP ${res.status}`;
+            }
+            if (!res.ok || message) {
+              setError(message || `Could not update driver (HTTP ${res.status}).`);
               setValue(currentStatus);
               return;
             }
