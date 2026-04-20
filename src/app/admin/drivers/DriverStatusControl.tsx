@@ -1,6 +1,7 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { setDriverStatusAction } from '../actions';
 import type { DriverStatus } from '@/lib/db';
 
@@ -16,17 +17,29 @@ const OPTIONS: { value: DriverStatus; label: string }[] = [
 ];
 
 export default function DriverStatusControl({ userId, currentStatus }: Props) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [value, setValue] = useState<DriverStatus>(currentStatus);
+  const [error, setError] = useState<string>('');
 
   return (
     <div className="flex items-center gap-2">
       <select
         className="text-xs font-mono uppercase tracking-wider"
-        value={currentStatus}
+        value={value}
         disabled={isPending}
         onChange={(e) =>
           startTransition(async () => {
-            await setDriverStatusAction(userId, e.target.value as DriverStatus);
+            const next = e.target.value as DriverStatus;
+            setValue(next);
+            setError('');
+            const result = await setDriverStatusAction(userId, next);
+            if (result?.error) {
+              setError(result.error);
+              setValue(currentStatus);
+              return;
+            }
+            router.refresh();
           })
         }
       >
@@ -37,6 +50,7 @@ export default function DriverStatusControl({ userId, currentStatus }: Props) {
         ))}
       </select>
       {isPending ? <span className="text-xs text-[var(--color-muted)]">Saving...</span> : null}
+      {error ? <span className="text-xs text-red-600">{error}</span> : null}
     </div>
   );
 }

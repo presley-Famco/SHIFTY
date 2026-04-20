@@ -315,12 +315,21 @@ export async function listUsers(): Promise<User[]> {
 export async function setDriverStatus(userId: string, status: DriverStatus): Promise<void> {
   if (USE_POSTGRES) {
     await ensureSchema();
-    await sql`UPDATE users SET driver_status = ${status} WHERE id = ${userId} AND role = 'driver'`;
+    const result = await sql<{ id: string }>`UPDATE users
+      SET driver_status = ${status}
+      WHERE id = ${userId} AND role = 'driver'
+      RETURNING id`;
+    if (result.rows.length === 0) {
+      throw new Error('Driver not found.');
+    }
     return;
   }
   const db = readDB();
   const u = db.users.find((x) => x.id === userId && x.role === 'driver');
-  if (u) u.driver_status = status;
+  if (!u) {
+    throw new Error('Driver not found.');
+  }
+  u.driver_status = status;
   writeDB(db);
 }
 

@@ -87,7 +87,12 @@ export async function setDriverStatusAction(
 ): Promise<{ error?: string }> {
   const user = await getCurrentUser();
   if (!user || user.role !== 'admin') return { error: 'Not authorized.' };
-  await setDriverStatus(userId, status);
+  try {
+    await setDriverStatus(userId, status);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update driver status.';
+    return { error: message };
+  }
   revalidatePath('/admin/drivers');
   revalidatePath('/admin');
   revalidatePath('/driver');

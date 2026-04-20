@@ -1,4 +1,5 @@
 import { listUsers } from '@/lib/db';
+import { unstable_noStore as noStore } from 'next/cache';
 import DriverStatusControl from './DriverStatusControl';
 
 function formatDriverStatus(s: string | null): string {
@@ -9,6 +10,7 @@ function formatDriverStatus(s: string | null): string {
 }
 
 export default async function AdminDriversPage() {
+  noStore();
   const users = await listUsers();
   const drivers = users.filter((u) => u.role === 'driver');
   const admins = users.filter((u) => u.role === 'admin');
