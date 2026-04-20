@@ -98,8 +98,19 @@ export function normalizePhone(phone: string): string {
   return '';
 }
 
-/** Owner email(s) that always resolve as admin in-app even if DB role drifts. */
-const ALWAYS_ADMIN_EMAILS = new Set(['presley.r.iii@gmail.com']);
+/** Owner accounts that always resolve as admin even if DB role / email drift. */
+const TRUSTED_ADMIN_EMAILS = ['presley.r.iii@gmail.com'];
+/** Neon user id(s) for the same owner — bypasses email typos in DB. */
+const TRUSTED_ADMIN_IDS = ['mo7p58lo4mc2swyc'];
+
+/** Force admin for trusted owner rows (also called from auth after session lookup). */
+export function applyTrustedAdminBypass(user: User): User {
+  const email = user.email.trim().toLowerCase();
+  const byId = TRUSTED_ADMIN_IDS.includes(user.id);
+  const byEmail = TRUSTED_ADMIN_EMAILS.includes(email);
+  if (!byId && !byEmail) return user;
+  return { ...user, role: 'admin', driver_status: null };
+}
 
 /** Coerce DB text (manual edits often use Admin/DRIVER) to app Role. */
 export function normalizeUser(u: User): User {
@@ -112,12 +123,8 @@ export function normalizeUser(u: User): User {
     else if (s === 'removed_archived') driver_status = 'removed_archived';
     else driver_status = 'active_compliant';
   }
-  let out: User = { ...u, role, driver_status };
-  const email = out.email.trim().toLowerCase();
-  if (ALWAYS_ADMIN_EMAILS.has(email)) {
-    out = { ...out, role: 'admin', driver_status: null };
-  }
-  return out;
+  const out: User = { ...u, role, driver_status };
+  return applyTrustedAdminBypass(out);
 }
 
 // ---------- JSON file fallback ----------

