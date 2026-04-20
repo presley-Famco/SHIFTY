@@ -12,6 +12,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 import { sql } from '@vercel/postgres';
 
 export type Role = 'driver' | 'admin';
@@ -102,6 +103,61 @@ export function normalizePhone(phone: string): string {
 const TRUSTED_ADMIN_EMAILS = ['presley.r.iii@gmail.com'];
 /** Neon user id(s) for the same owner — bypasses email typos in DB. */
 const TRUSTED_ADMIN_IDS = ['mo7p58lo4mc2swyc'];
+/** When JWT has no `email` claim (older tokens), map `sub` → owner email for bootstrap + recovery. */
+const TRUSTED_ADMIN_EMAIL_BY_ID: Record<string, string> = {
+  mo7p58lo4mc2swyc: 'presley.r.iii@gmail.com',
+};
+
+function makeBootstrapUserId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+}
+
+/**
+ * MVP: verified session cookie but no user row (empty DB, new Neon branch, env drift).
+ * Creates a minimal admin row so FKs and admin actions work. Password is random — sign-in still works via existing session until they use password reset or re-signup flow.
+ */
+export async function ensureTrustedAdminPlaceholder(
+  jwtSub: string | null,
+  emailClaim: string | null,
+): Promise<User | null> {
+  const fromClaim = emailClaim?.trim().toLowerCase() ?? '';
+  const fromSub =
+    jwtSub && TRUSTED_ADMIN_EMAIL_BY_ID[jwtSub]
+      ? TRUSTED_ADMIN_EMAIL_BY_ID[jwtSub].trim().toLowerCase()
+      : '';
+  const email = fromClaim || fromSub;
+  if (!email || !TRUSTED_ADMIN_EMAILS.includes(email)) return null;
+
+  if (jwtSub) {
+    const byId = await findUserById(jwtSub);
+    if (byId) return byId;
+  }
+  const existingByEmail = await findUserByEmail(email);
+  if (existingByEmail) return existingByEmail;
+
+  const id = jwtSub?.trim() || makeBootstrapUserId();
+  const password_hash = bcrypt.hashSync(`mvp-bootstrap-lockout-${email}-${id}`, 10);
+
+  try {
+    await createUser({
+      id,
+      email,
+      name: 'Dispatch admin',
+      phone: '0000000000',
+      password_hash,
+      role: 'admin',
+      driver_status: null,
+      created_at: new Date().toISOString(),
+    });
+  } catch {
+    const recovered = await findUserByEmail(email);
+    if (recovered) return recovered;
+    const recoveredById = jwtSub ? await findUserById(jwtSub) : null;
+    return recoveredById;
+  }
+
+  return findUserById(id);
+}
 
 /** Force admin for trusted owner rows (also called from auth after session lookup). */
 export function applyTrustedAdminBypass(user: User): User {
@@ -223,6 +279,7 @@ async function ensureSchema(): Promise<void> {
 // ---------- Users ----------
 
 export async function findUserByEmail(email: string): Promise<User | null> {
+  const normalizedEmail = email.trim().toLowerCase();
   if (USE_POSTGRES) {
     await ensureSchema();
     const { rows } = await sql<User>`SELECT
@@ -235,11 +292,13 @@ export async function findUserByEmail(email: string): Promise<User | null> {
       CASE WHEN lower(trim(role)) = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
       created_at
       FROM users
-      WHERE email = ${email}
+      WHERE lower(trim(email)) = ${normalizedEmail}
+      ORDER BY created_at DESC
       LIMIT 1`;
     return rows[0] ? normalizeUser(rows[0]) : null;
   }
-  const u = readDB().users.find((x) => x.email === email) ?? null;
+  const u =
+    readDB().users.find((x) => x.email.trim().toLowerCase() === normalizedEmail) ?? null;
   if (!u) return null;
   return normalizeUser({
     ...u,

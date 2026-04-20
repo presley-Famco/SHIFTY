@@ -1,6 +1,12 @@
 import { cookies, headers } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
-import { applyTrustedAdminBypass, findUserById, type User } from './db';
+import {
+  applyTrustedAdminBypass,
+  ensureTrustedAdminPlaceholder,
+  findUserByEmail,
+  findUserById,
+  type User,
+} from './db';
 
 function authSecretBytes(): Uint8Array {
   const raw =
@@ -31,12 +37,24 @@ function getCookieFromHeader(cookieHeader: string | null, name: string): string 
 async function userFromSessionToken(token: string): Promise<User | null> {
   try {
     const { payload } = await jwtVerify(token, authSecretBytes());
-    const userId = payload.sub;
-    if (typeof userId !== 'string') return null;
-    const raw = await findUserById(userId);
+    const userId = typeof payload.sub === 'string' ? payload.sub : null;
+    const emailClaim =
+      typeof (payload as { email?: unknown }).email === 'string'
+        ? (payload as { email: string }).email.trim().toLowerCase()
+        : null;
+
+    let raw: User | null = userId ? await findUserById(userId) : null;
+    // After DB resets, JWT `sub` may not exist anymore; recover via email baked into newer tokens.
+    if (!raw && emailClaim) {
+      raw = await findUserByEmail(emailClaim);
+    }
+    // MVP: verified JWT but empty / new Postgres — bootstrap trusted owner row so admin works.
+    if (!raw) {
+      raw = await ensureTrustedAdminPlaceholder(userId, emailClaim);
+    }
     if (!raw) return null;
+
     const user = applyTrustedAdminBypass(raw);
-    // Trusted owner always passes the driver gate after bypass (role becomes admin).
     if (user.role === 'driver' && user.driver_status !== 'active_compliant') return null;
     return user;
   } catch {
@@ -51,8 +69,11 @@ export async function getCurrentUserFromRequest(req: Request): Promise<User | nu
   return userFromSessionToken(token);
 }
 
-export async function createSession(userId: string): Promise<void> {
-  const token = await new SignJWT({ sub: userId })
+export async function createSession(userId: string, email: string): Promise<void> {
+  const token = await new SignJWT({
+    sub: userId,
+    email: email.trim().toLowerCase(),
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')

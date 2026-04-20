@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import {
+  applyTrustedAdminBypass,
   createUser,
   findUserByEmail,
   findUserByPhone,
@@ -76,7 +77,7 @@ export async function signupAction(formData: FormData): Promise<{ error?: string
     };
   }
 
-  await createSession(id);
+  await createSession(id, email);
   redirect(role === 'admin' ? '/admin' : '/driver');
 }
 
@@ -86,20 +87,22 @@ export async function loginAction(formData: FormData): Promise<{ error?: string 
   if (!identifier || !password) return { error: 'Phone/email and password are required.' };
 
   const asEmail = identifier.toLowerCase();
-  const user =
+  const lookedUp =
     (asEmail.includes('@') ? await findUserByEmail(asEmail) : await findUserByPhone(identifier)) ??
     (await findUserByEmail(asEmail));
-  if (!user) return { error: 'Invalid phone/email or password.' };
+  if (!lookedUp) return { error: 'Invalid phone/email or password.' };
+
+  const user = applyTrustedAdminBypass(lookedUp);
   if (user.role === 'driver' && user.driver_status && user.driver_status !== 'active_compliant') {
     if (user.driver_status === 'pending') {
       return { error: 'Your account is pending dispatch approval.' };
     }
     return { error: 'Your account has been archived. Contact dispatch.' };
   }
-  const ok = await bcrypt.compare(password, user.password_hash);
+  const ok = await bcrypt.compare(password, lookedUp.password_hash);
   if (!ok) return { error: 'Invalid phone/email or password.' };
 
-  await createSession(user.id);
+  await createSession(user.id, user.email);
   redirect(user.role === 'admin' ? '/admin' : '/driver');
 }
 
