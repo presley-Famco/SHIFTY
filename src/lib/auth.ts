@@ -2,9 +2,12 @@ import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import { findUserById, type User } from './db';
 
-const SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || 'dev-only-secret-change-me-in-prod-please-xxxxxxxxxxxxxxxx',
-);
+function authSecretBytes(): Uint8Array {
+  const raw =
+    process.env.AUTH_SECRET?.trim() ||
+    'dev-only-secret-change-me-in-prod-please-xxxxxxxxxxxxxxxx';
+  return new TextEncoder().encode(raw);
+}
 const COOKIE_NAME = 'driver_session';
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
@@ -13,7 +16,7 @@ export async function createSession(userId: string): Promise<void> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(SECRET);
+    .sign(authSecretBytes());
 
   cookies().set(COOKIE_NAME, token, {
     httpOnly: true,
@@ -32,7 +35,7 @@ export async function getCurrentUser(): Promise<User | null> {
   const token = cookies().get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, SECRET);
+    const { payload } = await jwtVerify(token, authSecretBytes());
     const userId = payload.sub;
     if (typeof userId !== 'string') return null;
     const user = await findUserById(userId);
