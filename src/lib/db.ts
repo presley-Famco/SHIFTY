@@ -108,6 +108,28 @@ const TRUSTED_ADMIN_EMAIL_BY_ID: Record<string, string> = {
   mo7p58lo4mc2swyc: 'presley.r.iii@gmail.com',
 };
 
+/**
+ * JWT `sub` values allowed for bootstrap when tokens lack `email`.
+ * Entries may be raw user ids, or owner emails — emails are resolved to ids via lookup (same env mistake-tolerant).
+ */
+async function trustedBootstrapSubIdSet(): Promise<Set<string>> {
+  const set = new Set<string>([
+    ...TRUSTED_ADMIN_IDS,
+    ...Object.keys(TRUSTED_ADMIN_EMAIL_BY_ID),
+  ]);
+  const segments =
+    process.env.SHIFTY_TRUSTED_BOOTSTRAP_SUB_IDS?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  for (const segment of segments) {
+    if (segment.includes('@')) {
+      const row = await findUserByEmail(segment.toLowerCase());
+      if (row) set.add(row.id);
+    } else {
+      set.add(segment);
+    }
+  }
+  return set;
+}
+
 function makeBootstrapUserId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
 }
@@ -125,7 +147,15 @@ export async function ensureTrustedAdminPlaceholder(
     jwtSub && TRUSTED_ADMIN_EMAIL_BY_ID[jwtSub]
       ? TRUSTED_ADMIN_EMAIL_BY_ID[jwtSub].trim().toLowerCase()
       : '';
-  const email = fromClaim || fromSub;
+
+  let email = fromClaim || fromSub;
+  // Legacy JWTs: no email claim; only trusted `sub` values may bind to owner email for bootstrap.
+  if (!email && jwtSub && (await trustedBootstrapSubIdSet()).has(jwtSub)) {
+    const envPick = process.env.SHIFTY_OWNER_EMAIL?.trim().toLowerCase() ?? '';
+    email =
+      (envPick && TRUSTED_ADMIN_EMAILS.includes(envPick) ? envPick : '') ||
+      TRUSTED_ADMIN_EMAILS[0];
+  }
   if (!email || !TRUSTED_ADMIN_EMAILS.includes(email)) return null;
 
   if (jwtSub) {

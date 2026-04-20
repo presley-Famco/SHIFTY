@@ -1,7 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { decideClaimAction } from './actions';
 
 type Props = {
   claimId: string;
@@ -16,6 +16,7 @@ type Props = {
 };
 
 export default function ClaimRow(props: Props) {
+  const router = useRouter();
   const [showDeny, setShowDeny] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +28,33 @@ export default function ClaimRow(props: Props) {
     day: 'numeric',
   });
 
+  async function decide(status: 'approved' | 'denied', reason: string | null) {
+    const res = await fetch('/api/admin/claims/decide', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claimId: props.claimId,
+        status,
+        reason,
+      }),
+    });
+    let message = '';
+    try {
+      const data = (await res.json()) as { error?: string };
+      message = data.error || '';
+    } catch {
+      message = res.statusText || `HTTP ${res.status}`;
+    }
+    return { ok: res.ok && !message, error: message || (!res.ok ? `HTTP ${res.status}` : '') };
+  }
+
   function approve() {
     setError(null);
     startTransition(async () => {
-      const res = await decideClaimAction(props.claimId, 'approved', null);
+      const res = await decide('approved', null);
       if (res.error) setError(res.error);
+      else router.refresh();
     });
   }
 
@@ -42,9 +65,12 @@ export default function ClaimRow(props: Props) {
     }
     setError(null);
     startTransition(async () => {
-      const res = await decideClaimAction(props.claimId, 'denied', reason.trim());
+      const res = await decide('denied', reason.trim());
       if (res.error) setError(res.error);
-      else setShowDeny(false);
+      else {
+        setShowDeny(false);
+        router.refresh();
+      }
     });
   }
 

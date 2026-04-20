@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { findUserById } from '@/lib/db';
+import { DRIVER_SESSION_COOKIE_NAME, DRIVER_SESSION_FORWARD_HEADER } from '@/lib/session-constants';
 
 export const runtime = 'nodejs';
 
@@ -36,7 +37,7 @@ function tokenFromCookieHeader(cookieHeader: string | null): string | null {
     if (idx === -1) continue;
     const key = part.slice(0, idx).trim();
     const val = part.slice(idx + 1).trim();
-    if (key === 'driver_session') {
+    if (key === DRIVER_SESSION_COOKIE_NAME) {
       try {
         return decodeURIComponent(val);
       } catch {
@@ -74,18 +75,20 @@ export async function GET(req: Request) {
     );
   }
 
-  const cookieApi = cookies().get('driver_session')?.value ?? null;
-  const cookieHdr = headers().get('cookie');
+  const h = headers();
+  const cookieApi = cookies().get(DRIVER_SESSION_COOKIE_NAME)?.value ?? null;
+  const cookieHdr = h.get('cookie');
   const tokenFromHdr = tokenFromCookieHeader(cookieHdr);
+  const tokenFromForward = h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ?? null;
 
-  const token = cookieApi ?? tokenFromHdr;
+  const token = cookieApi ?? tokenFromHdr ?? tokenFromForward;
   const jwtSub = token ? jwtSubUnverified(token) : null;
 
   const user = await getCurrentUser();
   const bySub = jwtSub ? await findUserById(jwtSub) : null;
 
-  const host = headers().get('host');
-  const forwardedHost = headers().get('x-forwarded-host');
+  const host = h.get('host');
+  const forwardedHost = h.get('x-forwarded-host');
 
   return NextResponse.json({
     requestHost: host,
@@ -93,6 +96,7 @@ export async function GET(req: Request) {
     postgresHostFromEnv: postgresHostHint(),
     cookiePresent_cookiesApi: !!cookieApi,
     cookiePresent_rawHeader: !!tokenFromHdr,
+    middlewareForwardedSession: !!tokenFromForward,
     jwtSubject_unverified: jwtSub,
     getCurrentUser:
       user &&

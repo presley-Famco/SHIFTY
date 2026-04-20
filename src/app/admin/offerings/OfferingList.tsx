@@ -1,7 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { deleteOfferingAction } from '../actions';
 
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number);
@@ -21,6 +21,7 @@ type Offering = {
 };
 
 export default function OfferingList({ offerings }: { offerings: Offering[] }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const byDate = new Map<string, Offering[]>();
@@ -72,7 +73,20 @@ export default function OfferingList({ offerings }: { offerings: Offering[] }) {
                         onClick={() => {
                           if (!confirm(`Delete this shift? ${o.claimCount} claim${o.claimCount === 1 ? '' : 's'} will be removed.`)) return;
                           startTransition(async () => {
-                            await deleteOfferingAction(o.id);
+                            const res = await fetch(
+                              `/api/admin/offerings?id=${encodeURIComponent(o.id)}`,
+                              { method: 'DELETE', credentials: 'include' },
+                            );
+                            if (!res.ok) {
+                              try {
+                                const data = (await res.json()) as { error?: string };
+                                alert(data.error || `Delete failed (${res.status})`);
+                              } catch {
+                                alert(`Delete failed (${res.status})`);
+                              }
+                              return;
+                            }
+                            router.refresh();
                           });
                         }}
                       >

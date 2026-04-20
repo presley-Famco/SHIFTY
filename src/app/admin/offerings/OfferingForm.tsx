@@ -1,7 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { postOfferingAction } from '../actions';
 
 type WeekDate = { date: string; label: string; dow: string };
 
@@ -14,6 +14,7 @@ const PRESETS: { label: string; start: string; end: string }[] = [
 ];
 
 export default function OfferingForm({ weekDates }: { weekDates: WeekDate[] }) {
+  const router = useRouter();
   const [date, setDate] = useState(weekDates[0]?.date || '');
   const [start, setStart] = useState('04:00');
   const [end, setEnd] = useState('08:00');
@@ -26,20 +27,34 @@ export default function OfferingForm({ weekDates }: { weekDates: WeekDate[] }) {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const fd = new FormData();
-        fd.set('date', date);
-        fd.set('start_time', start);
-        fd.set('end_time', end);
-        fd.set('label', label);
-        fd.set('notes', notes);
         setError(null);
         startTransition(async () => {
-          const res = await postOfferingAction(fd);
-          if (res.error) setError(res.error);
-          else {
-            setLabel('');
-            setNotes('');
+          const res = await fetch('/api/admin/offerings', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date,
+              start_time: start,
+              end_time: end,
+              label,
+              notes,
+            }),
+          });
+          let message = '';
+          try {
+            const data = (await res.json()) as { error?: string };
+            message = data.error || '';
+          } catch {
+            message = res.statusText || `HTTP ${res.status}`;
           }
+          if (!res.ok || message) {
+            setError(message || `Could not post shift (HTTP ${res.status}).`);
+            return;
+          }
+          setLabel('');
+          setNotes('');
+          router.refresh();
         });
       }}
       className="space-y-4"

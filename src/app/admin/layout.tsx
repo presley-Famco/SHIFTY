@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import TopNav from '@/components/TopNav';
 
-/** Always re-check session + DB; avoids cached admin shell vs failing server actions. */
+/** Always re-check session + DB; avoids stale cached shell vs API mutations. */
 export const dynamic = 'force-dynamic';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

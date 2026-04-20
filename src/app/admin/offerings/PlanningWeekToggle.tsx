@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { setPlanningWeekModeAction } from '../actions';
 import type { PlanningWeekMode } from '@/lib/db';
 
 type Props = {
@@ -18,10 +17,22 @@ export default function PlanningWeekToggle({ mode }: Props) {
   async function updateMode(next: PlanningWeekMode): Promise<void> {
     setSelected(next);
     setError('');
-    const result = await setPlanningWeekModeAction(next);
-    if (result?.error) {
+    const res = await fetch('/api/admin/planning-week-mode', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: next }),
+    });
+    let message = '';
+    try {
+      const data = (await res.json()) as { error?: string };
+      message = data.error || '';
+    } catch {
+      message = res.statusText || `HTTP ${res.status}`;
+    }
+    if (!res.ok || message) {
       setSelected(mode);
-      setError(result.error);
+      setError(message || `Could not update (${res.status}).`);
       return;
     }
     router.refresh();
