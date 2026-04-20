@@ -84,7 +84,12 @@ export async function GET(req: Request) {
   const user = await getCurrentUser();
   const bySub = jwtSub ? await findUserById(jwtSub) : null;
 
+  const host = headers().get('host');
+  const forwardedHost = headers().get('x-forwarded-host');
+
   return NextResponse.json({
+    requestHost: host,
+    forwardedHost,
     postgresHostFromEnv: postgresHostHint(),
     cookiePresent_cookiesApi: !!cookieApi,
     cookiePresent_rawHeader: !!tokenFromHdr,
