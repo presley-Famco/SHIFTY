@@ -1,6 +1,8 @@
 import { listUsers } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import { unstable_noStore as noStore } from 'next/cache';
 import DriverStatusControl from './DriverStatusControl';
+import RemoveAdminButton from './RemoveAdminButton';
 
 function formatDriverStatus(s: string | null): string {
   if (s === 'active_compliant') return 'Active / compliant';
@@ -12,8 +14,10 @@ function formatDriverStatus(s: string | null): string {
 export default async function AdminDriversPage() {
   noStore();
   const users = await listUsers();
+  const sessionUser = await getCurrentUser();
   const drivers = users.filter((u) => u.role === 'driver');
   const admins = users.filter((u) => u.role === 'admin');
+  const canRemoveAdmin = admins.length > 1;
   const activeDrivers = drivers.filter((u) => u.driver_status === 'active_compliant').length;
   const pendingDrivers = drivers.filter((u) => u.driver_status === 'pending').length;
   const archivedDrivers = drivers.filter((u) => u.driver_status === 'removed_archived').length;
@@ -70,14 +74,22 @@ export default async function AdminDriversPage() {
           {admins.map((u, i) => (
             <div
               key={u.id}
-              className={`px-4 py-3 flex items-center justify-between ${
+              className={`px-4 py-3 flex items-center justify-between gap-4 ${
                 i > 0 ? 'border-t border-[var(--color-line)]' : ''
               }`}
             >
               <div>
                 <div className="font-display text-lg">{u.name}</div>
                 <div className="text-xs font-mono text-[var(--color-muted)]">{u.email}</div>
+                {sessionUser?.id === u.id ? (
+                  <div className="text-xs font-mono text-[var(--color-muted)] mt-1">You</div>
+                ) : null}
               </div>
+              <RemoveAdminButton
+                targetUserId={u.id}
+                displayName={u.name}
+                disabled={!canRemoveAdmin}
+              />
             </div>
           ))}
         </div>

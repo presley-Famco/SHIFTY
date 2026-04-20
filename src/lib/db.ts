@@ -361,6 +361,26 @@ export async function updateUserPassword(userId: string, passwordHash: string): 
   writeDB(db);
 }
 
+/** Deletes a user and dependent rows (Postgres: FK CASCADE; JSON: manual cleanup). */
+export async function deleteUserById(userId: string): Promise<void> {
+  if (USE_POSTGRES) {
+    await ensureSchema();
+    await sql`DELETE FROM users WHERE id = ${userId}`;
+    return;
+  }
+  const db = readDB();
+  const removedOfferingIds = db.offerings.filter((o) => o.created_by === userId).map((o) => o.id);
+  db.offerings = db.offerings.filter((o) => o.created_by !== userId);
+  db.claims = db.claims.filter(
+    (c) => c.user_id !== userId && !removedOfferingIds.includes(c.offering_id),
+  );
+  const inspectionIds = db.inspections.filter((i) => i.user_id === userId).map((i) => i.id);
+  db.photos = db.photos.filter((p) => !inspectionIds.includes(p.inspection_id));
+  db.inspections = db.inspections.filter((i) => i.user_id !== userId);
+  db.users = db.users.filter((u) => u.id !== userId);
+  writeDB(db);
+}
+
 export async function getPlanningWeekMode(): Promise<PlanningWeekMode> {
   if (USE_POSTGRES) {
     await ensureSchema();
