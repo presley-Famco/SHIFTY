@@ -12,7 +12,7 @@ export default async function Home() {
     <main className="min-h-screen grain">
       <div className="max-w-4xl mx-auto px-6 py-16">
         <div className="flex items-baseline justify-between mb-16">
-          <span className="font-mono text-xs uppercase tracking-widest">driver_ops / v0.1</span>
+          <span className="font-mono text-xs uppercase tracking-widest">SHIFTY / v0.1</span>
           <span className="font-mono text-xs uppercase tracking-widest">mvp · internal</span>
         </div>
 

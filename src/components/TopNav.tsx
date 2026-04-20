@@ -8,7 +8,7 @@ export default function TopNav({ user }: { user: User }) {
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <Link href={isAdmin ? '/admin' : '/driver'} className="font-mono text-xs uppercase tracking-widest">
-            driver_ops
+            SHIFTY
           </Link>
           {isAdmin ? (
             <div className="flex gap-4 text-sm">
