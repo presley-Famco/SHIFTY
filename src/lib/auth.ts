@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import { findUserById, type User } from './db';
 
@@ -70,7 +70,11 @@ export async function destroySession(): Promise<void> {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const token = cookies().get(COOKIE_NAME)?.value;
+  let token = cookies().get(COOKIE_NAME)?.value ?? null;
+  // Server Actions on Vercel sometimes don't populate `cookies()`; fall back to raw header (same source as browsers send).
+  if (!token) {
+    token = getCookieFromHeader(headers().get('cookie'), COOKIE_NAME);
+  }
   if (!token) return null;
   return userFromSessionToken(token);
 }
