@@ -55,8 +55,23 @@ function tokenFromCookieHeader(cookieHeader: string | null): string | null {
 export async function GET(req: Request) {
   const expected = process.env.SESSION_DEBUG_SECRET?.trim();
   const sent = req.headers.get('x-session-debug')?.trim();
-  if (!expected || sent !== expected) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!expected) {
+    return NextResponse.json(
+      {
+        error:
+          'SESSION_DEBUG_SECRET is not set for this deployment. In Vercel → Settings → Environment Variables, add SESSION_DEBUG_SECRET for Preview AND Production (whichever matches this URL), redeploy, then retry with header x-session-debug matching that value exactly.',
+      },
+      { status: 503 },
+    );
+  }
+  if (sent !== expected) {
+    return NextResponse.json(
+      {
+        error:
+          'Missing or wrong x-session-debug header. It must match SESSION_DEBUG_SECRET in Vercel exactly (same spelling, spaces, Preview vs Production scope).',
+      },
+      { status: 401 },
+    );
   }
 
   const cookieApi = cookies().get('driver_session')?.value ?? null;
