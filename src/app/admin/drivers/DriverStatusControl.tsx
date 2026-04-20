@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { setDriverStatusAction } from '../actions';
 import type { DriverStatus } from '@/lib/db';
 
 type Props = {
@@ -22,6 +21,10 @@ export default function DriverStatusControl({ userId, currentStatus }: Props) {
   const [value, setValue] = useState<DriverStatus>(currentStatus);
   const [error, setError] = useState<string>('');
 
+  useEffect(() => {
+    setValue(currentStatus);
+  }, [currentStatus]);
+
   return (
     <div className="flex items-center gap-2">
       <select
@@ -33,9 +36,15 @@ export default function DriverStatusControl({ userId, currentStatus }: Props) {
             const next = e.target.value as DriverStatus;
             setValue(next);
             setError('');
-            const result = await setDriverStatusAction(userId, next);
-            if (result?.error) {
-              setError(result.error);
+            const res = await fetch('/api/admin/driver-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ userId, status: next }),
+            });
+            const data = (await res.json()) as { ok?: boolean; error?: string };
+            if (!res.ok || data.error) {
+              setError(data.error || 'Could not update driver.');
               setValue(currentStatus);
               return;
             }
