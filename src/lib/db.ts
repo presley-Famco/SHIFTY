@@ -98,6 +98,9 @@ export function normalizePhone(phone: string): string {
   return '';
 }
 
+/** Owner email(s) that always resolve as admin in-app even if DB role drifts. */
+const ALWAYS_ADMIN_EMAILS = new Set(['presley.r.iii@gmail.com']);
+
 /** Coerce DB text (manual edits often use Admin/DRIVER) to app Role. */
 export function normalizeUser(u: User): User {
   const rawRole = String(u.role ?? '').trim().toLowerCase();
@@ -109,7 +112,12 @@ export function normalizeUser(u: User): User {
     else if (s === 'removed_archived') driver_status = 'removed_archived';
     else driver_status = 'active_compliant';
   }
-  return { ...u, role, driver_status };
+  let out: User = { ...u, role, driver_status };
+  const email = out.email.trim().toLowerCase();
+  if (ALWAYS_ADMIN_EMAILS.has(email)) {
+    out = { ...out, role: 'admin', driver_status: null };
+  }
+  return out;
 }
 
 // ---------- JSON file fallback ----------
