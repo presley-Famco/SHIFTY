@@ -22,7 +22,9 @@ function randomId(): string {
 
 export async function postOfferingAction(formData: FormData): Promise<{ error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') return { error: 'Not authorized.' };
+  if (!user || user.role !== 'admin') {
+    return { error: 'Not authorized. Please log out and sign in again as admin.' };
+  }
 
   const date = String(formData.get('date') || '');
   const start_time = String(formData.get('start_time') || '');
@@ -57,7 +59,9 @@ export async function postOfferingAction(formData: FormData): Promise<{ error?: 
 
 export async function deleteOfferingAction(id: string): Promise<{ error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') return { error: 'Not authorized.' };
+  if (!user || user.role !== 'admin') {
+    return { error: 'Not authorized. Please log out and sign in again as admin.' };
+  }
   await deleteOffering(id);
   revalidatePath('/admin/offerings');
   revalidatePath('/admin');
@@ -70,7 +74,9 @@ export async function decideClaimAction(
   reason: string | null,
 ): Promise<{ error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') return { error: 'Not authorized.' };
+  if (!user || user.role !== 'admin') {
+    return { error: 'Not authorized. Please log out and sign in again as admin.' };
+  }
   const claim = await findClaimById(claimId);
   if (!claim) return { error: 'Claim not found.' };
   if (status === 'denied' && !reason) {
@@ -86,7 +92,9 @@ export async function setDriverStatusAction(
   status: DriverStatus,
 ): Promise<{ error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') return { error: 'Not authorized.' };
+  if (!user || user.role !== 'admin') {
+    return { error: 'Not authorized. Please log out and sign in again as admin.' };
+  }
   try {
     await setDriverStatus(userId, status);
   } catch (error) {
@@ -103,7 +111,9 @@ export async function setPlanningWeekModeAction(
   mode: PlanningWeekMode,
 ): Promise<{ error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') return { error: 'Not authorized.' };
+  if (!user || user.role !== 'admin') {
+    return { error: 'Not authorized. Please log out and sign in again as admin.' };
+  }
   const current = await getPlanningWeekMode();
   if (current === mode) return {};
   await setPlanningWeekMode(mode);

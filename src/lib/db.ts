@@ -98,6 +98,20 @@ export function normalizePhone(phone: string): string {
   return '';
 }
 
+/** Coerce DB text (manual edits often use Admin/DRIVER) to app Role. */
+export function normalizeUser(u: User): User {
+  const rawRole = String(u.role ?? '').trim().toLowerCase();
+  const role: Role = rawRole === 'admin' ? 'admin' : 'driver';
+  let driver_status: DriverStatus | null = null;
+  if (role === 'driver') {
+    const s = String(u.driver_status ?? '').trim().toLowerCase();
+    if (s === 'pending') driver_status = 'pending';
+    else if (s === 'removed_archived') driver_status = 'removed_archived';
+    else driver_status = 'active_compliant';
+  }
+  return { ...u, role, driver_status };
+}
+
 // ---------- JSON file fallback ----------
 
 const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), '.data');
@@ -145,7 +159,7 @@ async function ensureSchema(): Promise<void> {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS driver_status TEXT`;
-  await sql`UPDATE users SET driver_status = 'active_compliant' WHERE role = 'driver' AND driver_status IS NULL`;
+  await sql`UPDATE users SET driver_status = 'active_compliant' WHERE lower(trim(role)) = 'driver' AND driver_status IS NULL`;
   await sql`CREATE TABLE IF NOT EXISTS shift_offerings (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,
@@ -203,19 +217,19 @@ export async function findUserByEmail(email: string): Promise<User | null> {
       phone,
       password_hash,
       role,
-      CASE WHEN role = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
+      CASE WHEN lower(trim(role)) = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
       created_at
       FROM users
       WHERE email = ${email}
       LIMIT 1`;
-    return rows[0] ?? null;
+    return rows[0] ? normalizeUser(rows[0]) : null;
   }
   const u = readDB().users.find((x) => x.email === email) ?? null;
   if (!u) return null;
-  return {
+  return normalizeUser({
     ...u,
     driver_status: u.role === 'driver' ? u.driver_status ?? 'active_compliant' : null,
-  };
+  });
 }
 
 export async function findUserByPhone(phone: string): Promise<User | null> {
@@ -230,7 +244,7 @@ export async function findUserByPhone(phone: string): Promise<User | null> {
       phone,
       password_hash,
       role,
-      CASE WHEN role = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
+      CASE WHEN lower(trim(role)) = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
       created_at
       FROM users
       WHERE CASE
@@ -240,17 +254,17 @@ export async function findUserByPhone(phone: string): Promise<User | null> {
       END = ${normalized}
       ORDER BY created_at DESC
       LIMIT 1`;
-    return rows[0] ?? null;
+    return rows[0] ? normalizeUser(rows[0]) : null;
   }
   const users = readDB().users
     .filter((u) => u.phone.replace(/\D/g, '').slice(-10) === normalized)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const u = users[0] ?? null;
   if (!u) return null;
-  return {
+  return normalizeUser({
     ...u,
     driver_status: u.role === 'driver' ? u.driver_status ?? 'active_compliant' : null,
-  };
+  });
 }
 
 export async function findUserById(id: string): Promise<User | null> {
@@ -263,19 +277,19 @@ export async function findUserById(id: string): Promise<User | null> {
       phone,
       password_hash,
       role,
-      CASE WHEN role = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
+      CASE WHEN lower(trim(role)) = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
       created_at
       FROM users
       WHERE id = ${id}
       LIMIT 1`;
-    return rows[0] ?? null;
+    return rows[0] ? normalizeUser(rows[0]) : null;
   }
   const u = readDB().users.find((x) => x.id === id) ?? null;
   if (!u) return null;
-  return {
+  return normalizeUser({
     ...u,
     driver_status: u.role === 'driver' ? u.driver_status ?? 'active_compliant' : null,
-  };
+  });
 }
 
 export async function createUser(u: User): Promise<void> {
@@ -300,16 +314,18 @@ export async function listUsers(): Promise<User[]> {
       phone,
       password_hash,
       role,
-      CASE WHEN role = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
+      CASE WHEN lower(trim(role)) = 'driver' THEN COALESCE(driver_status, 'active_compliant') ELSE NULL END AS driver_status,
       created_at
       FROM users
       ORDER BY created_at DESC`;
-    return rows;
+    return rows.map((row) => normalizeUser(row));
   }
-  return readDB().users.map((u) => ({
-    ...u,
-    driver_status: u.role === 'driver' ? u.driver_status ?? 'active_compliant' : null,
-  }));
+  return readDB().users.map((u) =>
+    normalizeUser({
+      ...u,
+      driver_status: u.role === 'driver' ? u.driver_status ?? 'active_compliant' : null,
+    }),
+  );
 }
 
 export async function setDriverStatus(userId: string, status: DriverStatus): Promise<void> {
@@ -317,7 +333,7 @@ export async function setDriverStatus(userId: string, status: DriverStatus): Pro
     await ensureSchema();
     const result = await sql<{ id: string }>`UPDATE users
       SET driver_status = ${status}
-      WHERE id = ${userId} AND role = 'driver'
+      WHERE id = ${userId} AND lower(trim(role)) = 'driver'
       RETURNING id`;
     if (result.rows.length === 0) {
       throw new Error('Driver not found.');
