@@ -1,5 +1,6 @@
 'use client';
 
+import { adminFetchInit } from '@/lib/admin-fetch';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 
@@ -75,7 +76,7 @@ export default function OfferingList({ offerings }: { offerings: Offering[] }) {
                           startTransition(async () => {
                             const res = await fetch(
                               `/api/admin/offerings?id=${encodeURIComponent(o.id)}`,
-                              { method: 'DELETE', credentials: 'include' },
+                              adminFetchInit({ method: 'DELETE' }),
                             );
                             if (!res.ok) {
                               try {

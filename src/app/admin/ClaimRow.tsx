@@ -1,5 +1,6 @@
 'use client';
 
+import { adminFetchInit } from '@/lib/admin-fetch';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
@@ -29,16 +30,18 @@ export default function ClaimRow(props: Props) {
   });
 
   async function decide(status: 'approved' | 'denied', reason: string | null) {
-    const res = await fetch('/api/admin/claims/decide', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        claimId: props.claimId,
-        status,
-        reason,
+    const res = await fetch(
+      '/api/admin/claims/decide',
+      adminFetchInit({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          claimId: props.claimId,
+          status,
+          reason,
+        }),
       }),
-    });
+    );
     let message = '';
     try {
       const data = (await res.json()) as { error?: string };

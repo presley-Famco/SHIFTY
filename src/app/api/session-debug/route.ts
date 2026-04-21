@@ -2,7 +2,11 @@ import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { findUserById } from '@/lib/db';
-import { DRIVER_SESSION_COOKIE_NAME, DRIVER_SESSION_FORWARD_HEADER } from '@/lib/session-constants';
+import {
+  DRIVER_SESSION_COOKIE_NAME,
+  DRIVER_SESSION_FORWARD_HEADER,
+  DRIVER_SESSION_PUBLIC_COOKIE_NAME,
+} from '@/lib/session-constants';
 
 export const runtime = 'nodejs';
 
@@ -31,13 +35,21 @@ function jwtSubUnverified(token: string): string | null {
 }
 
 function tokenFromCookieHeader(cookieHeader: string | null): string | null {
+  return tokenFromCookieNamed(cookieHeader, DRIVER_SESSION_COOKIE_NAME);
+}
+
+function tokenFromCookieHeaderPublic(cookieHeader: string | null): string | null {
+  return tokenFromCookieNamed(cookieHeader, DRIVER_SESSION_PUBLIC_COOKIE_NAME);
+}
+
+function tokenFromCookieNamed(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(';')) {
     const idx = part.indexOf('=');
     if (idx === -1) continue;
     const key = part.slice(0, idx).trim();
     const val = part.slice(idx + 1).trim();
-    if (key === DRIVER_SESSION_COOKIE_NAME) {
+    if (key === name) {
       try {
         return decodeURIComponent(val);
       } catch {
@@ -76,12 +88,16 @@ export async function GET(req: Request) {
   }
 
   const h = headers();
-  const cookieApi = cookies().get(DRIVER_SESSION_COOKIE_NAME)?.value ?? null;
+  const cookieApi =
+    cookies().get(DRIVER_SESSION_COOKIE_NAME)?.value ??
+    cookies().get(DRIVER_SESSION_PUBLIC_COOKIE_NAME)?.value ??
+    null;
   const cookieHdr = h.get('cookie');
   const tokenFromHdr = tokenFromCookieHeader(cookieHdr);
   const tokenFromForward = h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ?? null;
+  const tokenFromPublic = tokenFromCookieHeaderPublic(h.get('cookie') || h.get('Cookie'));
 
-  const token = cookieApi ?? tokenFromHdr ?? tokenFromForward;
+  const token = cookieApi ?? tokenFromHdr ?? tokenFromForward ?? tokenFromPublic;
   const jwtSub = token ? jwtSubUnverified(token) : null;
 
   const user = await getCurrentUser();
@@ -97,6 +113,7 @@ export async function GET(req: Request) {
     cookiePresent_cookiesApi: !!cookieApi,
     cookiePresent_rawHeader: !!tokenFromHdr,
     middlewareForwardedSession: !!tokenFromForward,
+    readableEchoCookieHint: !!tokenFromPublic,
     jwtSubject_unverified: jwtSub,
     getCurrentUser:
       user &&

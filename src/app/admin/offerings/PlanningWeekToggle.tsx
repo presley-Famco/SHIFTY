@@ -1,5 +1,6 @@
 'use client';
 
+import { adminFetchInit } from '@/lib/admin-fetch';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PlanningWeekMode } from '@/lib/db';
@@ -17,12 +18,14 @@ export default function PlanningWeekToggle({ mode }: Props) {
   async function updateMode(next: PlanningWeekMode): Promise<void> {
     setSelected(next);
     setError('');
-    const res = await fetch('/api/admin/planning-week-mode', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: next }),
-    });
+    const res = await fetch(
+      '/api/admin/planning-week-mode',
+      adminFetchInit({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: next }),
+      }),
+    );
     let message = '';
     try {
       const data = (await res.json()) as { error?: string };

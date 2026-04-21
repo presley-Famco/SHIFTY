@@ -1,5 +1,6 @@
 'use client';
 
+import { adminFetchInit } from '@/lib/admin-fetch';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -37,12 +38,14 @@ export default function RemoveAdminButton({ targetUserId, displayName, disabled 
           setError('');
           void (async () => {
             try {
-              const res = await fetch('/api/admin/remove-admin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ targetUserId }),
-              });
+              const res = await fetch(
+                '/api/admin/remove-admin',
+                adminFetchInit({
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ targetUserId }),
+                }),
+              );
               let message = '';
               try {
                 const data = (await res.json()) as { ok?: boolean; deletedSelf?: boolean; error?: string };

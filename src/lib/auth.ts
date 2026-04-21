@@ -10,6 +10,9 @@ import {
 import {
   DRIVER_SESSION_COOKIE_NAME,
   DRIVER_SESSION_FORWARD_HEADER,
+  DRIVER_SESSION_MAX_AGE_SEC,
+  DRIVER_SESSION_PUBLIC_COOKIE_NAME,
+  shouldMirrorSessionToPublicCookie,
 } from './session-constants';
 
 const DEV_FALLBACK_SECRET = 'dev-only-secret-change-me-in-prod-please-xxxxxxxxxxxxxxxx';
@@ -19,15 +22,29 @@ function signingSecret(): string {
   return process.env.AUTH_SECRET?.trim() || DEV_FALLBACK_SECRET;
 }
 
-/** Try multiple secrets so a rotated AUTH_SECRET does not brick every in-flight cookie at once. */
+function bearerFromAuthorization(header: string | null): string | null {
+  const h = header?.trim();
+  if (!h) return null;
+  const low = h.toLowerCase();
+  if (!low.startsWith('bearer ')) return null;
+  const t = h.slice(7).trim();
+  return t || null;
+}
+
+/** Try multiple secrets; always try dev fallback last so bad AUTH_SECRET env does not brick everyone. */
 async function verifySessionJwt(token: string): Promise<JWTPayload | null> {
-  const candidates: string[] = [];
   const primary = process.env.AUTH_SECRET?.trim();
   const previous = process.env.AUTH_SECRET_PREVIOUS?.trim();
-  if (primary) candidates.push(primary);
-  if (previous) candidates.push(previous);
-  if (!primary && !previous) candidates.push(DEV_FALLBACK_SECRET);
-  for (const s of candidates) {
+  const ordered: string[] = [];
+  if (primary) ordered.push(primary);
+  if (previous) ordered.push(previous);
+  if (!primary && !previous) ordered.push(DEV_FALLBACK_SECRET);
+  if (!ordered.includes(DEV_FALLBACK_SECRET)) ordered.push(DEV_FALLBACK_SECRET);
+
+  const seen = new Set<string>();
+  for (const s of ordered) {
+    if (seen.has(s)) continue;
+    seen.add(s);
     try {
       const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
       return payload;
@@ -37,7 +54,6 @@ async function verifySessionJwt(token: string): Promise<JWTPayload | null> {
   }
   return null;
 }
-const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function getCookieFromHeader(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
@@ -62,13 +78,17 @@ function emailFromJwtPayload(payload: JWTPayload): string | null {
   return null;
 }
 
-/** Collect session JWT from Cookie header(s) or middleware-forwarded header (see middleware.ts). */
+/** Collect session JWT from cookies, middleware forward, or Authorization Bearer (from admin-fetch). */
 export function getSessionTokenFromRequest(req: Request): string | null {
   const h = req.headers;
   return (
     getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_COOKIE_NAME) ||
     getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME) ||
+    getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
+    getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
     h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ||
+    bearerFromAuthorization(h.get('authorization')) ||
+    bearerFromAuthorization(h.get('Authorization')) ||
     null
   );
 }
@@ -103,8 +123,14 @@ async function userFromSessionToken(token: string): Promise<User | null> {
 /** Use in Route Handlers when `cookies()` from next/headers does not see the session cookie. */
 export async function getCurrentUserFromRequest(req: Request): Promise<User | null> {
   const token = getSessionTokenFromRequest(req);
-  if (!token) return null;
-  return userFromSessionToken(token);
+  if (token) {
+    const user = await userFromSessionToken(token);
+    if (user) return user;
+  }
+
+  // Route Handlers can sometimes miss the raw cookie/header that RSC sees reliably via next/headers.
+  // Fall back to the same resolver used by layouts/pages so admin page access and admin API access stay aligned.
+  return getCurrentUser();
 }
 
 export async function createSession(userId: string, email: string): Promise<void> {
@@ -122,23 +148,41 @@ export async function createSession(userId: string, email: string): Promise<void
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: MAX_AGE_SECONDS,
+    maxAge: DRIVER_SESSION_MAX_AGE_SEC,
   });
+
+  if (shouldMirrorSessionToPublicCookie()) {
+    cookies().set(DRIVER_SESSION_PUBLIC_COOKIE_NAME, token, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: DRIVER_SESSION_MAX_AGE_SEC,
+    });
+  }
 }
 
 export async function destroySession(): Promise<void> {
   cookies().delete(DRIVER_SESSION_COOKIE_NAME);
+  cookies().delete(DRIVER_SESSION_PUBLIC_COOKIE_NAME);
 }
 
 export async function getCurrentUser(): Promise<User | null> {
   const h = headers();
-  let token = cookies().get(DRIVER_SESSION_COOKIE_NAME)?.value ?? null;
+  let token =
+    cookies().get(DRIVER_SESSION_COOKIE_NAME)?.value ??
+    cookies().get(DRIVER_SESSION_PUBLIC_COOKIE_NAME)?.value ??
+    null;
   // Server Actions / Vercel sometimes omit `cookies()` or Cookie; middleware forwards JWT on x-shifty-session.
   if (!token) {
     token =
       getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_COOKIE_NAME) ||
       getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME) ||
+      getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
+      getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
       h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ||
+      bearerFromAuthorization(h.get('authorization')) ||
+      bearerFromAuthorization(h.get('Authorization')) ||
       null;
   }
   if (!token) return null;

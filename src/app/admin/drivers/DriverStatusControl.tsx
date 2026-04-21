@@ -1,5 +1,6 @@
 'use client';
 
+import { adminFetchInit } from '@/lib/admin-fetch';
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DriverStatus } from '@/lib/db';
@@ -36,12 +37,14 @@ export default function DriverStatusControl({ userId, currentStatus }: Props) {
             const next = e.target.value as DriverStatus;
             setValue(next);
             setError('');
-            const res = await fetch('/api/admin/driver-status', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ userId, status: next }),
-            });
+            const res = await fetch(
+              '/api/admin/driver-status',
+              adminFetchInit({
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, status: next }),
+              }),
+            );
             let message = '';
             try {
               const data = (await res.json()) as { ok?: boolean; error?: string };

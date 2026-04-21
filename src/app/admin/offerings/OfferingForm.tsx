@@ -1,5 +1,6 @@
 'use client';
 
+import { adminFetchInit } from '@/lib/admin-fetch';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
@@ -29,18 +30,20 @@ export default function OfferingForm({ weekDates }: { weekDates: WeekDate[] }) {
         e.preventDefault();
         setError(null);
         startTransition(async () => {
-          const res = await fetch('/api/admin/offerings', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              date,
-              start_time: start,
-              end_time: end,
-              label,
-              notes,
+          const res = await fetch(
+            '/api/admin/offerings',
+            adminFetchInit({
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                date,
+                start_time: start,
+                end_time: end,
+                label,
+                notes,
+              }),
             }),
-          });
+          );
           let message = '';
           try {
             const data = (await res.json()) as { error?: string };
