@@ -80,17 +80,40 @@ function emailFromJwtPayload(payload: JWTPayload): string | null {
 
 /** Collect session JWT from cookies, middleware forward, or Authorization Bearer (from admin-fetch). */
 export function getSessionTokenFromRequest(req: Request): string | null {
+  return getSessionTokensFromRequest(req)[0] ?? null;
+}
+
+function uniqueTokens(tokens: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const token of tokens) {
+    const trimmed = token?.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function getSessionTokensFromRequest(req: Request): string[] {
   const h = req.headers;
-  return (
+  return uniqueTokens([
     bearerFromAuthorization(h.get('authorization')) ||
-    bearerFromAuthorization(h.get('Authorization')) ||
-    h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ||
+      bearerFromAuthorization(h.get('Authorization')),
+    h.get(DRIVER_SESSION_FORWARD_HEADER),
     getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_COOKIE_NAME) ||
-    getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME) ||
+      getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME),
     getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
-    getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
-    null
-  );
+      getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME),
+  ]);
+}
+
+async function firstUserFromSessionTokens(tokens: string[]): Promise<User | null> {
+  for (const token of tokens) {
+    const user = await userFromSessionToken(token);
+    if (user) return user;
+  }
+  return null;
 }
 
 async function userFromSessionToken(token: string): Promise<User | null> {
@@ -122,11 +145,8 @@ async function userFromSessionToken(token: string): Promise<User | null> {
 
 /** Use in Route Handlers when `cookies()` from next/headers does not see the session cookie. */
 export async function getCurrentUserFromRequest(req: Request): Promise<User | null> {
-  const token = getSessionTokenFromRequest(req);
-  if (token) {
-    const user = await userFromSessionToken(token);
-    if (user) return user;
-  }
+  const user = await firstUserFromSessionTokens(getSessionTokensFromRequest(req));
+  if (user) return user;
 
   // Route Handlers can sometimes miss the raw cookie/header that RSC sees reliably via next/headers.
   // Fall back to the same resolver used by layouts/pages so admin page access and admin API access stay aligned.
@@ -169,22 +189,21 @@ export async function destroySession(): Promise<void> {
 
 export async function getCurrentUser(): Promise<User | null> {
   const h = headers();
-  let token =
+  const cookieApiToken =
     cookies().get(DRIVER_SESSION_COOKIE_NAME)?.value ??
     cookies().get(DRIVER_SESSION_PUBLIC_COOKIE_NAME)?.value ??
     null;
   // Server Actions / Vercel sometimes omit `cookies()` or Cookie; middleware forwards JWT on x-shifty-session.
-  if (!token) {
-    token =
-      getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_COOKIE_NAME) ||
-      getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME) ||
-      getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
-      getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
-      h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ||
+  return firstUserFromSessionTokens(
+    uniqueTokens([
       bearerFromAuthorization(h.get('authorization')) ||
-      bearerFromAuthorization(h.get('Authorization')) ||
-      null;
-  }
-  if (!token) return null;
-  return userFromSessionToken(token);
+        bearerFromAuthorization(h.get('Authorization')),
+      h.get(DRIVER_SESSION_FORWARD_HEADER),
+      cookieApiToken,
+      getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_COOKIE_NAME) ||
+        getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME),
+      getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
+        getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME),
+    ]),
+  );
 }
