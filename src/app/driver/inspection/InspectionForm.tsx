@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import { resolveViaHandoffUrl } from '@/lib/viaHandoffUrl';
 import { submitInspectionAction } from '../actions';
-
-const VIA_REDIRECT_URL = process.env.NEXT_PUBLIC_VIA_REDIRECT_URL;
 type PhotoLabel = 'front' | 'back' | 'driver_side' | 'passenger_side' | 'selfie';
 const PHOTO_LABELS: { key: PhotoLabel; title: string; hint: string }[] = [
   { key: 'front', title: 'Front of vehicle', hint: 'Full front, license plate visible' },
@@ -44,10 +43,10 @@ export default function InspectionForm() {
 
   const allFilled = PHOTO_LABELS.every(({ key }) => photos[key]);
 
-  function openViaApp() {
-    if (!VIA_REDIRECT_URL) return;
+  function handoffToViaApp() {
     setHandoffPending(true);
-    window.location.href = VIA_REDIRECT_URL;
+    const url = resolveViaHandoffUrl(process.env.NEXT_PUBLIC_VIA_REDIRECT_URL);
+    window.location.href = url;
     window.setTimeout(() => setHandoffPending(false), 2500);
   }
 
@@ -136,12 +135,8 @@ export default function InspectionForm() {
       if (res.error) setError(res.error);
       else if (res.ok) {
         setSuccess(true);
-        if (VIA_REDIRECT_URL) {
-          openViaApp();
-          return;
-        }
-        // Fallback for environments where no mobile handoff URL is configured.
-        window.location.reload();
+        handoffToViaApp();
+        return;
       }
     });
   }
@@ -211,20 +206,15 @@ export default function InspectionForm() {
           <div className="text-[var(--color-green)] text-sm mb-2">
             Inspection submitted successfully.
           </div>
-          {VIA_REDIRECT_URL ? (
-            <div className="flex items-center gap-3">
-              <button type="button" className="btn btn-primary" onClick={openViaApp}>
-                {handoffPending ? 'Opening Via app...' : 'Open Via app'}
-              </button>
-              <span className="text-xs text-[var(--color-muted)]">
-                If the app did not open automatically, tap the button.
-              </span>
-            </div>
-          ) : (
-            <div className="text-xs text-[var(--color-muted)]">
-              Via redirect URL is not configured.
-            </div>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            <button type="button" className="btn btn-primary" onClick={handoffToViaApp}>
+              {handoffPending ? 'Opening Via…' : 'Open Via Driver'}
+            </button>
+            <span className="text-xs text-[var(--color-muted)]">
+              Opens Via Driver in the App Store or Google Play. If you already have the app installed,
+              use Open from the store page.
+            </span>
+          </div>
         </div>
       )}
 

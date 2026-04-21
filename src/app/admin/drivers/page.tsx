@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { listUsers } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { unstable_noStore as noStore } from 'next/cache';
@@ -48,7 +49,12 @@ export default async function AdminDriversPage() {
                 }`}
               >
                 <div>
-                  <div className="font-display text-lg">{u.name}</div>
+                  <Link
+                    href={`/admin/drivers/${u.id}`}
+                    className="font-display text-lg hover:underline inline-block"
+                  >
+                    {u.name}
+                  </Link>
                   <div className="text-xs font-mono text-[var(--color-muted)]">
                     {u.email} · {u.phone}
                   </div>

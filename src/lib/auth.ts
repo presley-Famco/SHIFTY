@@ -78,32 +78,6 @@ function emailFromJwtPayload(payload: JWTPayload): string | null {
   return null;
 }
 
-function jwtSubjectUnverified(token: string): string | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
-      sub?: unknown;
-    };
-    return typeof payload.sub === 'string' ? payload.sub : null;
-  } catch {
-    return null;
-  }
-}
-
-function jwtEmailUnverified(token: string): string | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
-      email?: unknown;
-    };
-    return typeof payload.email === 'string' ? payload.email : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Collect session JWT from cookies, middleware forward, or Authorization Bearer (from admin-fetch). */
 export function getSessionTokenFromRequest(req: Request): string | null {
   const h = req.headers;
@@ -157,35 +131,6 @@ export async function getCurrentUserFromRequest(req: Request): Promise<User | nu
   // Route Handlers can sometimes miss the raw cookie/header that RSC sees reliably via next/headers.
   // Fall back to the same resolver used by layouts/pages so admin page access and admin API access stay aligned.
   return getCurrentUser();
-}
-
-function compactUser(user: User | null): { id: string; email: string; role: string; driver_status: string | null } | null {
-  if (!user) return null;
-  return {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    driver_status: user.driver_status,
-  };
-}
-
-export async function getRequestAuthDebug(req: Request): Promise<{
-  requestTokenFound: boolean;
-  requestJwtSubject_unverified: string | null;
-  requestJwtEmail_unverified: string | null;
-  getCurrentUserFromRequest: { id: string; email: string; role: string; driver_status: string | null } | null;
-  getCurrentUser: { id: string; email: string; role: string; driver_status: string | null } | null;
-}> {
-  const token = getSessionTokenFromRequest(req);
-  const requestUser = await getCurrentUserFromRequest(req);
-  const currentUser = await getCurrentUser();
-  return {
-    requestTokenFound: !!token,
-    requestJwtSubject_unverified: token ? jwtSubjectUnverified(token) : null,
-    requestJwtEmail_unverified: token ? jwtEmailUnverified(token) : null,
-    getCurrentUserFromRequest: compactUser(requestUser),
-    getCurrentUser: compactUser(currentUser),
-  };
 }
 
 export async function createSession(userId: string, email: string): Promise<void> {

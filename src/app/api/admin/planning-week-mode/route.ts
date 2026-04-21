@@ -1,6 +1,6 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
-import { getCurrentUserFromRequest, getRequestAuthDebug } from '@/lib/auth';
+import { getCurrentUserFromRequest } from '@/lib/auth';
 import { getPlanningWeekMode, setPlanningWeekMode, type PlanningWeekMode } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -9,12 +9,8 @@ export async function POST(req: Request) {
   try {
     const user = await getCurrentUserFromRequest(req);
     if (!user || user.role !== 'admin') {
-      const authDebug = await getRequestAuthDebug(req);
       return NextResponse.json(
-        {
-          error: 'Not authorized. Please log out and sign in again as admin.',
-          authDebug,
-        },
+        { error: 'Not authorized. Please log out and sign in again as admin.' },
         { status: 403 },
       );
     }
