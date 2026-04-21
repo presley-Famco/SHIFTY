@@ -27,6 +27,19 @@ function jwtSubUnverified(token: string): string | null {
   }
 }
 
+function emailUnverified(token: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
+      email?: unknown;
+    };
+    return typeof payload.email === 'string' ? payload.email : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Same auth path as /api/admin/* route handlers (getCurrentUserFromRequest).
  * GET with header x-session-debug matching SESSION_DEBUG_SECRET.
@@ -36,25 +49,15 @@ function jwtSubUnverified(token: string): string | null {
 export async function GET(req: Request) {
   const expected = process.env.SESSION_DEBUG_SECRET?.trim();
   const sent = req.headers.get('x-session-debug')?.trim();
-  if (!expected) {
-    return NextResponse.json(
-      { error: 'SESSION_DEBUG_SECRET is not set for this deployment.' },
-      { status: 503 },
-    );
-  }
-  if (sent !== expected) {
-    return NextResponse.json(
-      { error: 'Missing or wrong x-session-debug header.' },
-      { status: 401 },
-    );
-  }
-
   const reqToken = getSessionTokenFromRequest(req);
   const reqJwtSub = reqToken ? jwtSubUnverified(reqToken) : null;
+  const reqJwtEmail = reqToken ? emailUnverified(reqToken) : null;
   const reqDbUser = reqJwtSub ? await findUserById(reqJwtSub) : null;
 
   const requestUser = await getCurrentUserFromRequest(req);
   const nextHeadersUser = await getCurrentUser();
+  const secretOk = !!expected && sent === expected;
+  const allowFull = secretOk || requestUser?.role === 'admin' || nextHeadersUser?.role === 'admin';
 
   const compact = (u: NonNullable<Awaited<ReturnType<typeof getCurrentUserFromRequest>>>) =>
     ({
@@ -66,16 +69,20 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     postgresHostFromEnv: postgresHostHint(),
+    detailLevel: allowFull ? 'full' : 'limited',
+    requestTokenFound: !!reqToken,
     requestJwtSubject_unverified: reqJwtSub,
+    requestJwtEmail_unverified: allowFull ? reqJwtEmail : null,
     dbUserForRequestJwtSubject:
-      reqDbUser &&
+      allowFull && reqDbUser &&
       ({
         id: reqDbUser.id,
         email: reqDbUser.email,
         role: reqDbUser.role,
         driver_status: reqDbUser.driver_status,
       } as const),
-    getCurrentUserFromRequest: requestUser ? compact(requestUser) : null,
+    getCurrentUserFromRequest: allowFull && requestUser ? compact(requestUser) : null,
+    getCurrentUser: allowFull && nextHeadersUser ? compact(nextHeadersUser) : null,
     mismatch_notes: [
       !reqToken ? 'No token on this request (cookie / Authorization / forwarded header).' : null,
       reqJwtSub && !reqDbUser ? 'JWT sub does not exist in this database (wrong Neon branch or stale token).' : null,
