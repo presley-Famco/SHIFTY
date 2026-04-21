@@ -625,7 +625,11 @@ export async function listClaimsForOfferings(offeringIds: string[]): Promise<Shi
   if (offeringIds.length === 0) return [];
   if (USE_POSTGRES) {
     await ensureSchema();
-    const { rows } = await sql<ShiftClaim>`SELECT * FROM shift_claims WHERE offering_id = ANY(${offeringIds as unknown as string})`;
+    const placeholders = offeringIds.map((_, idx) => `$${idx + 1}`).join(', ');
+    const { rows } = await sql.query<ShiftClaim>(
+      `SELECT * FROM shift_claims WHERE offering_id IN (${placeholders})`,
+      offeringIds,
+    );
     return rows;
   }
   return readDB().claims.filter((c) => offeringIds.includes(c.offering_id));
@@ -700,6 +704,22 @@ export async function listPhotosForInspection(inspectionId: string): Promise<Ins
     return rows;
   }
   return readDB().photos.filter((p) => p.inspection_id === inspectionId);
+}
+
+/** One round-trip for admin inspection log (avoids N+1 timeouts when many inspections exist). */
+export async function listPhotosForInspectionIds(inspectionIds: string[]): Promise<InspectionPhoto[]> {
+  if (inspectionIds.length === 0) return [];
+  if (USE_POSTGRES) {
+    await ensureSchema();
+    const placeholders = inspectionIds.map((_, idx) => `$${idx + 1}`).join(', ');
+    const { rows } = await sql.query<InspectionPhoto>(
+      `SELECT * FROM inspection_photos WHERE inspection_id IN (${placeholders})`,
+      inspectionIds,
+    );
+    return rows;
+  }
+  const idSet = new Set(inspectionIds);
+  return readDB().photos.filter((p) => idSet.has(p.inspection_id));
 }
 
 export async function getInspectionByUserAndDate(

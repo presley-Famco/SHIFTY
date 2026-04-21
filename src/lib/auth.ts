@@ -82,13 +82,13 @@ function emailFromJwtPayload(payload: JWTPayload): string | null {
 export function getSessionTokenFromRequest(req: Request): string | null {
   const h = req.headers;
   return (
+    bearerFromAuthorization(h.get('authorization')) ||
+    bearerFromAuthorization(h.get('Authorization')) ||
+    h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ||
     getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_COOKIE_NAME) ||
     getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_COOKIE_NAME) ||
     getCookieFromHeader(h.get('cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
     getCookieFromHeader(h.get('Cookie'), DRIVER_SESSION_PUBLIC_COOKIE_NAME) ||
-    h.get(DRIVER_SESSION_FORWARD_HEADER)?.trim() ||
-    bearerFromAuthorization(h.get('authorization')) ||
-    bearerFromAuthorization(h.get('Authorization')) ||
     null
   );
 }
@@ -130,7 +130,7 @@ export async function getCurrentUserFromRequest(req: Request): Promise<User | nu
 
   // Route Handlers can sometimes miss the raw cookie/header that RSC sees reliably via next/headers.
   // Fall back to the same resolver used by layouts/pages so admin page access and admin API access stay aligned.
-  return getCurrentUser();
+  return await getCurrentUser();
 }
 
 export async function createSession(userId: string, email: string): Promise<void> {
